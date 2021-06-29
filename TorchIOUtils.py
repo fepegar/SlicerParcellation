@@ -43,7 +43,8 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
     logging.info(f'TorchIO {torchio.__version__} imported correctly')
     return torchio
 
-  def installTorchIO(self):
+  @staticmethod
+  def installTorchIO():
     slicer.util.pip_install('torchio')
     import torchio
     logging.info(f'TorchIO {torchio.__version__} installed correctly')
@@ -59,6 +60,7 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
       image = self.torchio.LabelMap(tensor=tensor, affine=affine)
     return image
 
-  def getVolumeNodeFromTorchIOImage(self, image, outputVolumeNode):
+  @staticmethod
+  def getVolumeNodeFromTorchIOImage(image, outputVolumeNode):
     su.PushVolumeToSlicer(image.as_sitk(), targetNode=outputVolumeNode)
     return outputVolumeNode
