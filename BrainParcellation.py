@@ -8,6 +8,14 @@ from slicer.ScriptedLoadableModule import (
   ScriptedLoadableModuleTest,
 )
 
+from PyTorchUtils import PyTorchUtilsLogic
+from TorchIOUtils import TorchIOUtilsLogic
+
+
+REPO_OWNER = 'fepegar'
+REPO_NAME = 'highresnet'
+MODEL_NAME = 'highres3dnet'
+
 
 class BrainParcellation(ScriptedLoadableModule):
   def __init__(self, parent):
@@ -30,6 +38,15 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.logic = BrainParcellationLogic()
     self.makeGUI()
     self.onSelectors()
+    self._model = None
+
+  @property
+  def model(self):
+    if self._model is None:
+      pu = PyTorchUtilsLogic()
+      self._model = pu.getPyTorchHubModel(REPO_OWNER, REPO_NAME, MODEL_NAME)
+      self._model.to(pu.getDevice())
+    return self._model
 
   def makeGUI(self):
     self.inputCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -81,11 +98,15 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
   def onRunButton(self):
     inputNode, outputNode = self.getNodes()
     model = None  # TODO
-    self.logic.parcellate(model, inputNode, outputNode)
+    self.logic.parcellate(self.model, inputNode, outputNode)
     slicer.util.setSliceViewerLayers(label=outputNode.GetID())
 
 
 class BrainParcellationLogic(ScriptedLoadableModuleLogic):
+  def __init__(self):
+    self.torchLogic = PyTorchUtilsLogic()
+    self.torchioLogic = TorchIOUtilsLogic()
+
   def parcellate(
       self,
       model,
@@ -93,30 +114,81 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       outputLabelMapNode,  # outputSegmentationNode,  # TODO
       useMixedPrecision=True,
       ):
-    from TorchIOUtils import TorchIOUtilsLogic
-    tioLogic = TorchIOUtilsLogic()
-    inputTorchIOImage = tioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
-    outputTorchIOImage = self.infer(
-      model,
-      inputTorchIOImage,
-      useMixedPrecision=useMixedPrecision,
-    )
-    outputLabelMapNode = tioLogic.getVolumeNodeFromTorchIOImage(
+    torch = self.torchLogic.torch
+    inputTorchIOImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+    with torch.no_grad():
+      with torch.cuda.amp.autocast(enabled=useMixedPrecision):
+        # outputTorchIOImage = self.inferVolume(
+        #   model,
+        #   inputTorchIOImage,
+        #   useMixedPrecision=useMixedPrecision,
+        # )
+        outputTorchIOImage = self.inferPatches(
+          model,
+          inputTorchIOImage,
+          patchSize=128,
+          patchOverlap=0,
+          batchSize=1,
+        )
+    outputLabelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(
       outputTorchIOImage,
       outputLabelMapNode,
     )
     self.setGIFColors(outputLabelMapNode)
     return outputLabelMapNode
 
-  def infer(self, model, torchIOImage, useMixedPrecision):
+  def inferVolume(self, model, torchIOImage):
     # TODO
-    from TorchIOUtils import TorchIOUtilsLogic
-    tio = TorchIOUtilsLogic().torchio
+    tio = self.torchioLogic.torchio
     toFloat = tio.Lambda(lambda x: x.float())
     threshold = tio.Lambda(lambda x: x > x.mean())
     transform = tio.Compose([toFloat, threshold])
     output = transform(torchIOImage)
     return output
+
+  def inferPatches(
+      self,
+      model,
+      inputImage,
+      patchSize,
+      patchOverlap,
+      batchSize,
+      showProgress=True,
+      ):
+    torch = self.torchLogic.torch
+    tio = self.torchioLogic.torchio
+    imageName = 'mri'
+    subject = tio.Subject({imageName: inputImage})
+    gridSampler = tio.inference.GridSampler(subject, patchSize, patchOverlap)
+    patchLoader = torch.utils.data.DataLoader(gridSampler, batch_size=batchSize)
+    aggregator = tio.inference.GridAggregator(gridSampler)
+    # TODO: if there is patch overlap, are the labels being (wrongly) averaged?
+    if showProgress:
+      numBatches = len(patchLoader)
+      progressDialog = slicer.util.createProgressDialog(
+        value=0,
+        maximum=numBatches,
+        windowTitle='Running inference...',
+      )
+    for i, patchesBatch in enumerate(patchLoader):
+      if showProgress:
+        progressDialog.setValue(i)
+        slicer.app.processEvents()  # necessary?
+      inputTensor = patchesBatch[imageName][tio.DATA]  # TODO .to(model.device)
+      locations = patchesBatch[tio.LOCATION]
+      logits = model(inputTensor)
+      labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True)
+      # labels = (torch.rand(*tuple(inputTensor.shape), device=inputTensor.device) > 0.5).byte()
+      aggregator.add_batch(labels, locations)
+
+    if showProgress:
+      progressDialog.setValue(numBatches)
+      slicer.app.processEvents()  # necessary?
+      progressDialog.close()
+
+    outputTensor = aggregator.get_output_tensor()
+    image = tio.LabelMap(tensor=outputTensor, affine=inputImage.affine)
+    return image
 
   def setGIFColors(self, labelMapVolumeNode):
     pass  # TODO

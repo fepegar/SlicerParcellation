@@ -55,9 +55,13 @@ class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
     wheelUrl = ltt.find_links(['torch'])[0]
     return wheelUrl
 
-  @staticmethod
   def getPyTorchHubModel(self, repoOwner, repoName, modelName, *args, **kwargs):
     # This will fail if dependencies in the corresponding hub.py are not installed
     repo = f'{repoOwner}/{repoName}'
+    logging.info(f'Downloading model {modelName} from {repo}')
     model = self.torch.hub.load(repo, modelName, *args, pretrained=True, **kwargs)
     return model
+
+  def getDevice(self):
+    torch = self.torch
+    return torch.device('cuda') if torch.cuda.is_available() else 'cpu'
