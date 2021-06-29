@@ -1,3 +1,8 @@
+import logging
+from pathlib import Path
+
+import numpy as np
+
 import qt
 import ctk
 import slicer
@@ -15,6 +20,7 @@ from TorchIOUtils import TorchIOUtilsLogic
 REPO_OWNER = 'fepegar'
 REPO_NAME = 'highresnet'
 MODEL_NAME = 'highres3dnet'
+LI_LANDMARKS = (0.0, 8.1, 15.5, 18.7, 21.5, 26.1, 30.0, 33.8, 38.2, 40.7, 44.0, 58.4, 100.0)
 
 
 class BrainParcellation(ScriptedLoadableModule):
@@ -97,7 +103,6 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
 
   def onRunButton(self):
     inputNode, outputNode = self.getNodes()
-    model = None  # TODO
     self.logic.parcellate(self.model, inputNode, outputNode)
     slicer.util.setSliceViewerLayers(label=outputNode.GetID())
 
@@ -114,8 +119,11 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       outputLabelMapNode,  # outputSegmentationNode,  # TODO
       useMixedPrecision=True,
       ):
+    tio = self.torchioLogic.torchio
     torch = self.torchLogic.torch
-    inputTorchIOImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+    inputImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+    preprocessedImage = self.preprocess(inputImage)
+
     with torch.no_grad():
       with torch.cuda.amp.autocast(enabled=useMixedPrecision):
         # outputTorchIOImage = self.inferVolume(
@@ -125,17 +133,35 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         # )
         outputTorchIOImage = self.inferPatches(
           model,
-          inputTorchIOImage,
+          preprocessedImage,
           patchSize=128,
-          patchOverlap=0,
+          patchOverlap=4,
           batchSize=1,
         )
+    outputInInputSpace = tio.Resample(inputImage)(outputTorchIOImage)
+
     outputLabelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(
-      outputTorchIOImage,
+      outputInInputSpace,
       outputLabelMapNode,
     )
     self.setGIFColors(outputLabelMapNode)
     return outputLabelMapNode
+
+  def preprocess(self, torchIOImage, interpolation='linear'):
+    key = 't1'
+    tio = self.torchioLogic.torchio
+    landmarks = {key: np.array(LI_LANDMARKS)}
+    transforms = (
+      tio.ToCanonical(),  # to RAS
+      tio.Resample(image_interpolation=interpolation),  # to 1 mm iso
+      tio.HistogramStandardization(landmarks=landmarks),
+      tio.ZNormalization(),
+    )
+    transform = tio.Compose(transforms)
+    subject = tio.Subject({key: torchIOImage})  # for the histogram standardization
+    logging.info('Preprocessing input...')
+    transformed = transform(subject)[key]
+    return transformed
 
   def inferVolume(self, model, torchIOImage):
     # TODO
@@ -157,6 +183,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       ):
     torch = self.torchLogic.torch
     tio = self.torchioLogic.torchio
+    device = self.torchLogic.getDevice()
     imageName = 'mri'
     subject = tio.Subject({imageName: inputImage})
     gridSampler = tio.inference.GridSampler(subject, patchSize, patchOverlap)
@@ -174,11 +201,10 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       if showProgress:
         progressDialog.setValue(i)
         slicer.app.processEvents()  # necessary?
-      inputTensor = patchesBatch[imageName][tio.DATA]  # TODO .to(model.device)
+      inputTensor = patchesBatch[imageName][tio.DATA].to(device)
       locations = patchesBatch[tio.LOCATION]
       logits = model(inputTensor)
-      labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True)
-      # labels = (torch.rand(*tuple(inputTensor.shape), device=inputTensor.device) > 0.5).byte()
+      labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True).cpu()
       aggregator.add_batch(labels, locations)
 
     if showProgress:
@@ -190,5 +216,15 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     image = tio.LabelMap(tensor=outputTensor, affine=inputImage.affine)
     return image
 
+  def getColorNode(self):
+    colorTablePath = Path(__file__).parent / 'GIFNiftyNet.ctbl'
+    try:
+      colorNode = slicer.util.getNode(colorTablePath.stem)
+    except slicer.util.MRMLNodeNotFoundException:
+      colorNode = slicer.util.loadColorTable(str(colorTablePath))
+    return colorNode
+
   def setGIFColors(self, labelMapVolumeNode):
-    pass  # TODO
+    colorNode = self.getColorNode()
+    displayNode = labelMapVolumeNode.GetDisplayNode()
+    displayNode.SetAndObserveColorNodeID(colorNode.GetID())
