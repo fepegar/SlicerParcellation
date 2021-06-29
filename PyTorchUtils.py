@@ -27,8 +27,13 @@ class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
     self._torch = None
 
   @property
+  def cuda(self):
+    return self.getDevice() != 'cpu'
+
+  @property
   def torch(self):
     if self._torch is None:
+      logging.info('Importing torch...')
       self._torch = self.importTorch()
     return self._torch
 
@@ -58,7 +63,6 @@ class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
   def getPyTorchHubModel(self, repoOwner, repoName, modelName, *args, **kwargs):
     # This will fail if dependencies in the corresponding hub.py are not installed
     repo = f'{repoOwner}/{repoName}'
-    logging.info(f'Downloading model {modelName} from {repo}')
     model = self.torch.hub.load(repo, modelName, *args, pretrained=True, **kwargs)
     return model
 

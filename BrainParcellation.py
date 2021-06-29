@@ -26,10 +26,10 @@ LI_LANDMARKS = (0.0, 8.1, 15.5, 18.7, 21.5, 26.1, 30.0, 33.8, 38.2, 40.7, 44.0, 
 class BrainParcellation(ScriptedLoadableModule):
   def __init__(self, parent):
     super().__init__(parent)
-    self.parent.title = "Brain Parcellation"
-    self.parent.categories = ["Segmentation"]
+    self.parent.title = 'Brain Parcellation'
+    self.parent.categories = ['Segmentation']
     self.parent.dependencies = []
-    self.parent.contributors = ["Fernando Perez-Garcia (University College London)"]
+    self.parent.contributors = ['Fernando Perez-Garcia (University College London)']
     self.parent.helpText = 'This module does this and that.'
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = (
@@ -55,10 +55,21 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     return self._model
 
   def makeGUI(self):
-    self.inputCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.inputCollapsibleButton.text = "Input"
-    self.layout.addWidget(self.inputCollapsibleButton)
-    nodesFormLayout = qt.QFormLayout(self.inputCollapsibleButton)
+    self.makeDataLayout()
+    self.makeSettingsLayout()
+
+    self.runPushButton = qt.QPushButton('Run')
+    self.runPushButton.clicked.connect(self.onRunButton)
+    self.runPushButton.setDisabled(True)
+    self.layout.addWidget(self.runPushButton)
+
+    self.layout.addStretch(1)
+
+  def makeDataLayout(self):
+    self.dataCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.dataCollapsibleButton.text = "Data"
+    self.layout.addWidget(self.dataCollapsibleButton)
+    self.dataLayout = qt.QFormLayout(self.dataCollapsibleButton)
 
     self.inputNodeSelector = slicer.qMRMLNodeComboBox()
     self.inputNodeSelector.nodeTypes = ['vtkMRMLScalarVolumeNode']
@@ -70,10 +81,10 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.inputNodeSelector.setMRMLScene(slicer.mrmlScene)
     self.inputNodeSelector.setToolTip('')  # TODO
     self.inputNodeSelector.currentNodeChanged.connect(self.onSelectors)
-    nodesFormLayout.addRow("Input volume: ", self.inputNodeSelector)
+    self.dataLayout.addRow("Input volume: ", self.inputNodeSelector)
 
     self.outputNodeSelector = slicer.qMRMLNodeComboBox()
-    self.outputNodeSelector.nodeTypes = ['vtkMRMLLabelMapVolumeNode']
+    self.outputNodeSelector.nodeTypes = ['vtkMRMLSegmentationNode']
     self.outputNodeSelector.addEnabled = True
     self.outputNodeSelector.removeEnabled = False
     self.outputNodeSelector.noneEnabled = False
@@ -82,31 +93,87 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.outputNodeSelector.setMRMLScene(slicer.mrmlScene)
     self.outputNodeSelector.setToolTip('')  # TODO
     self.outputNodeSelector.currentNodeChanged.connect(self.onSelectors)
-    nodesFormLayout.addRow("Output volume: ", self.outputNodeSelector)
+    self.dataLayout.addRow("Output segmentation: ", self.outputNodeSelector)
 
-    self.runPushButton = qt.QPushButton('Run')
-    self.runPushButton.clicked.connect(self.onRunButton)
-    self.runPushButton.setDisabled(True)
-    nodesFormLayout.addWidget(self.runPushButton)
+  def makeSettingsLayout(self):
+    self.settingsCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.settingsCollapsibleButton.text = 'Settings'
+    self.layout.addWidget(self.settingsCollapsibleButton)
+    self.settingsLayout = qt.QFormLayout(self.settingsCollapsibleButton)
 
-    self.layout.addStretch(1)
+    self.mixedPrecisionCheckBox = qt.QCheckBox()
+    self.settingsLayout.addRow('Use mixed precision: ', self.mixedPrecisionCheckBox)
 
-  def getNodes(self):
+    self.inferenceModeGroupBox = qt.QGroupBox()
+    self.settingsLayout.addRow('Inference mode: ', self.inferenceModeGroupBox)
+    self.inferenceModeLayout = qt.QHBoxLayout(self.inferenceModeGroupBox)
+
+    self.fullVolumeRadioButton = qt.QRadioButton('Full volume')
+    self.inferenceModeLayout.addWidget(self.fullVolumeRadioButton)
+    self.patchesRadioButton = qt.QRadioButton('Patches')
+    self.inferenceModeLayout.addWidget(self.patchesRadioButton)
+    # self.autoRadioButton = qt.QRadioButton('Auto')
+    # self.inferenceModeLayout.addWidget(self.autoRadioButton)
+
+    # self.autoRadioButton.setChecked(True)
+    self.fullVolumeRadioButton.setChecked(True)
+
+    self.patchesRadioButton.toggled.connect(self.onPatchesButton)
+
+    self.patchesSettingsGroupBox = qt.QGroupBox('Patches settings')
+    self.settingsLayout.addWidget(self.patchesSettingsGroupBox)
+    self.patchesSettingsLayout = qt.QFormLayout(self.patchesSettingsGroupBox)
+
+    self.patchSizeSpinBox = qt.QSpinBox()
+    self.patchSizeSpinBox.minimum = 10
+    self.patchSizeSpinBox.maximum = 1000
+    self.patchSizeSpinBox.value = 128
+    self.patchesSettingsLayout.addRow('Patch size: ', self.patchSizeSpinBox)
+
+    self.patchOverlapSpinBox = qt.QSpinBox()
+    self.patchOverlapSpinBox.minimum = 0
+    self.patchOverlapSpinBox.maximum = 1000
+    self.patchOverlapSpinBox.value = 4
+    self.patchesSettingsLayout.addRow('Overlap: ', self.patchOverlapSpinBox)
+
+    self.batchSizeSpinBox = qt.QSpinBox()
+    self.batchSizeSpinBox.minimum = 1
+    self.batchSizeSpinBox.maximum = 100
+    self.batchSizeSpinBox.value = 1
+    self.patchesSettingsLayout.addRow('Batch size: ', self.batchSizeSpinBox)
+
+    self.onPatchesButton()
+
+  def getDataNodes(self):
     inputNode = self.inputNodeSelector.currentNode()
     outputNode = self.outputNodeSelector.currentNode()
     return inputNode, outputNode
 
   def onSelectors(self):
-    inputNode, outputNode = self.getNodes()
+    inputNode, outputNode = self.getDataNodes()
     enable = inputNode is not None and outputNode is not None
     self.runPushButton.setEnabled(enable)
+
+  def onPatchesButton(self):
+    self.patchesSettingsGroupBox.setVisible(self.patchesRadioButton.isChecked())
 
   def onRunButton(self):
     if not self.logic.confirmDeviceOk():
       return
-    inputNode, outputNode = self.getNodes()
-    self.logic.parcellate(self.model, inputNode, outputNode)
-    slicer.util.setSliceViewerLayers(label=outputNode.GetID())
+    inputNode, outputNode = self.getDataNodes()
+    try:
+      self.logic.parcellate(
+        self.model,
+        inputNode,
+        outputNode,
+        patchBased=self.patchesRadioButton.isChecked(),
+        useMixedPrecision=self.mixedPrecisionCheckBox.isChecked(),
+        patchSize=self.patchSizeSpinBox.value,
+        patchOverlap=self.patchOverlapSpinBox.value,
+        batchSize=self.batchSizeSpinBox.value,
+      )
+    except Exception as e:
+      slicer.util.errorDisplay(f'Error running parcellation:\n{e}')
 
 
 class BrainParcellationLogic(ScriptedLoadableModuleLogic):
@@ -126,35 +193,49 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       self,
       model,
       inputVolumeNode,
-      outputLabelMapNode,  # outputSegmentationNode,  # TODO
+      outputSegmentationNode,
+      patchBased=True,
       useMixedPrecision=True,
+      patchSize=None,
+      patchOverlap=None,
+      batchSize=None,
       ):
     tio = self.torchioLogic.torchio
     torch = self.torchLogic.torch
+    torch.set_grad_enabled(False)
+
+    logging.info('Creating TorchIO image...')
     inputImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+
+    logging.info('Preprocessing image...')
     preprocessedImage = self.preprocess(inputImage)
 
-    with torch.no_grad():
-      with torch.cuda.amp.autocast(enabled=useMixedPrecision):
-        # outputTorchIOImage = self.inferVolume(
-        #   model,
-        #   inputTorchIOImage,
-        # )
+    with torch.cuda.amp.autocast(enabled=useMixedPrecision):
+      if patchBased:
         outputTorchIOImage = self.inferPatches(
           model,
           preprocessedImage,
-          patchSize=64,  # 128
-          patchOverlap=4,
-          batchSize=1,
+          patchSize=patchSize,
+          patchOverlap=patchOverlap,
+          batchSize=batchSize,
+        )
+      else:
+        outputTorchIOImage = self.inferVolume(
+          model,
+          preprocessedImage,
         )
     outputInInputSpace = tio.Resample(inputImage)(outputTorchIOImage)
 
-    outputLabelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(
-      outputInInputSpace,
-      outputLabelMapNode,
-    )
-    self.setGIFColors(outputLabelMapNode)
-    return outputLabelMapNode
+    labelMapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
+    labelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(outputInInputSpace,labelMapNode)
+    labelMapNode.CreateDefaultDisplayNodes()
+    self.setGIFColors(labelMapNode)
+
+    segmentationsLogic = slicer.modules.segmentations.logic()
+    segmentationsLogic.ImportLabelmapToSegmentationNode(labelMapNode, outputSegmentationNode)
+    outputSegmentationNode.CreateClosedSurfaceRepresentation()
+    slicer.mrmlScene.RemoveNode(labelMapNode)
+    return outputSegmentationNode
 
   def preprocess(self, torchIOImage, interpolation='linear'):
     key = 't1'
@@ -168,7 +249,6 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     )
     transform = tio.Compose(transforms)
     subject = tio.Subject({key: torchIOImage})  # for the histogram standardization
-    logging.info('Preprocessing input...')
     transformed = transform(subject)[key]
     return transformed
 
@@ -199,7 +279,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     gridSampler = tio.inference.GridSampler(subject, patchSize, patchOverlap)
     patchLoader = torch.utils.data.DataLoader(gridSampler, batch_size=batchSize)
     aggregator = tio.inference.GridAggregator(gridSampler)
-    # TODO: if there is patch overlap, are the labels being (wrongly) averaged?
+    # TODO: if there is patch overlap, are the labels being (incorrectly) averaged?
     if showProgress:
       numBatches = len(patchLoader)
       progressDialog = slicer.util.createProgressDialog(
@@ -208,6 +288,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         windowTitle='Running inference...',
       )
     for i, patchesBatch in enumerate(patchLoader):
+      if i != numBatches // 2: continue
       if showProgress:
         progressDialog.setValue(i)
         slicer.app.processEvents()  # necessary?

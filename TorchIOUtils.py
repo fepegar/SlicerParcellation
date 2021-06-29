@@ -32,6 +32,7 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
   @property
   def torchio(self):
     if self._torchio is None:
+      logging.info('Importing torchio...')
       self._torchio = self.importTorchIO()
     return self._torchio
 
