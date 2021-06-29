@@ -24,8 +24,7 @@ class TorchIOUtils(ScriptedLoadableModule):
 
 
 class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
-  def __init__(self, parent):
-    super().__init__(parent=parent)
+  def __init__(self):
     self._torchio = None
 
   @property

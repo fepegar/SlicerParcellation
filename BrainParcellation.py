@@ -1,3 +1,5 @@
+import qt
+import ctk
 from slicer.ScriptedLoadableModule import (
   ScriptedLoadableModule,
   ScriptedLoadableModuleWidget,
@@ -27,6 +29,14 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
   def setup(self):
     super().setup()
     self.logic = BrainParcellationLogic()
+    self.makeGUI()
+
+  def makeGUI(self):
+    self.inputCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.inputCollapsibleButton.text = "Input"
+    self.layout.addWidget(self.inputCollapsibleButton)
+    inputFormLayout = qt.QFormLayout(self.inputCollapsibleButton)
+
 
 
 class BrainParcellationLogic(ScriptedLoadableModuleLogic):

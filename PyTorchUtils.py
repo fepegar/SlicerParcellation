@@ -23,8 +23,7 @@ class PyTorchUtils(ScriptedLoadableModule):
 
 
 class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
-  def __init__(self, parent):
-    super().__init__(parent=parent)
+  def __init__(self):
     self._torch = None
 
   @property
