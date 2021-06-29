@@ -1,5 +1,7 @@
 import logging
 
+import SimpleITK as sitk
+
 import slicer
 from slicer.ScriptedLoadableModule import (
   ScriptedLoadableModule,
@@ -52,12 +54,14 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
 
   def getTorchIOImageFromVolumeNode(self, volumeNode):
     image = su.PullVolumeFromSlicer(volumeNode)
-    tensor, affine = self.torchio.io.sitk_to_nib(image)
+    tio = self.torchio
     if volumeNode.IsA('vtkMRMLScalarVolumeNode'):
-      image = self.torchio.ScalarImage(tensor=tensor, affine=affine)
+      image = sitk.Cast(image, sitk.sitkFloat32)
+      class_ = tio.ScalarImage
     elif volumeNode.IsA('vtkMRMLLabelMapVolumeNode'):
-      image = self.torchio.LabelMap(tensor=tensor, affine=affine)
-    return image
+      class_ = tio.LabelMap
+    tensor, affine = tio.io.sitk_to_nib(image)
+    return class_(tensor=tensor, affine=affine)
 
   @staticmethod
   def getVolumeNodeFromTorchIOImage(image, outputVolumeNode):
