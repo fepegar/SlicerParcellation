@@ -34,12 +34,28 @@ class ParcellationLogic(ScriptedLoadableModuleLogic):
       self,
       model,
       inputVolumeNode,
-      # outputSegmentationNode,  # TODO
-      outputLabelMapNode,
+      outputLabelMapNode,  # outputSegmentationNode,  # TODO
       useMixedPrecision=True,
       ):
-    import TorchIOUtils
-    tioLogic = TorchIOUtils.TorchIOUtilsLogic()
-    inputTorchIOImage = self.getTorchIOImageFromVolumeNode(inputVolumeNode)
-    outputTorchIOImage = self.infer(model, inputTorchIOImage)
-    pass
+    from TorchIOUtils import TorchIOUtilsLogic
+    tioLogic = TorchIOUtilsLogic()
+    inputTorchIOImage = tioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+    outputTorchIOImage = self.infer(
+      model,
+      inputTorchIOImage,
+      useMixedPrecision=useMixedPrecision,
+    )
+    outputLabelMapNode = tioLogic.getVolumeNodeFromTorchIOImage(outputTorchIOImage)
+    self.setGIFColors(outputLabelMapNode)
+    return outputLabelMapNode
+
+  def infer(self, model, torchIOImage, useMixedPrecision):
+    # TODO
+    from TorchIOUtils import TorchIOUtilsLogic
+    tioLogic = TorchIOUtilsLogic()
+    threshold = tioLogic.torchio.Lambda(lambda x: x > x.mean())
+    output = threshold(torchIOImage)
+    return output
+
+  def setGIFColors(self, labelMapVolumeNode):
+    pass  # TODO

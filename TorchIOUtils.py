@@ -35,8 +35,8 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
     return self._torchio
 
   def importTorchIO(self):
-    import PyTorchUtils
-    PyTorchUtils.PyTorchUtilsLogic().importTorch()  # make sure torch is installed
+    from PyTorchUtils import PyTorchUtilsLogic
+    PyTorchUtilsLogic().torch  # make sure torch is installed
     try:
       import torchio
     except ModuleNotFoundError:
@@ -51,11 +51,15 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
     return torchio
 
   @staticmethod
-  def getTorchIOImageFromVolumeNode(self, inputVolumeNode):
-    image = su.PullVolumeFromSlicer(inputVolumeNode)
+  def getTorchIOImageFromVolumeNode(self, volumeNode):
+    image = su.PullVolumeFromSlicer(volumeNode)
     tensor, affine = self.torchio.io.sitk_to_nib(image)
-    if inputVolumeNode.IsA('vtkMRMLScalarVolumeNode'):
+    if volumeNode.IsA('vtkMRMLScalarVolumeNode'):
       image = self.torchio.ScalarImage(tensor=tensor, affine=affine)
-    elif inputVolumeNode.IsA('vtkMRMLLabelMapVolumeNode'):
+    elif volumeNode.IsA('vtkMRMLLabelMapVolumeNode'):
       image = self.torchio.LabelMap(tensor=tensor, affine=affine)
     return image
+
+  def getVolumeNodeFromTorchIOImage(self, image, outputVolumeNode):
+    su.PushVolumeToSlicer(image.as_sitk(), targetNode=outputVolumeNode)
+    return outputVolumeNode
