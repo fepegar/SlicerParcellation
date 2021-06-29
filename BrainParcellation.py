@@ -8,7 +8,7 @@ from slicer.ScriptedLoadableModule import (
 from PyTorchUtils import PyTorchUtilsLogic
 
 
-class Parcellation(ScriptedLoadableModule):
+class BrainParcellation(ScriptedLoadableModule):
   def __init__(self, parent):
     super().__init__(parent)
     self.parent.title = "Brain Parcellation"
@@ -23,13 +23,13 @@ class Parcellation(ScriptedLoadableModule):
     )
 
 
-class ParcellationWidget(ScriptedLoadableModuleWidget):
+class BrainParcellationWidget(ScriptedLoadableModuleWidget):
   def setup(self):
     super().setup()
-    self.logic = ParcellationLogic()
+    self.logic = BrainParcellationLogic()
 
 
-class ParcellationLogic(ScriptedLoadableModuleLogic):
+class BrainParcellationLogic(ScriptedLoadableModuleLogic):
   def parcellate(
       self,
       model,
