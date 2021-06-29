@@ -102,6 +102,8 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.runPushButton.setEnabled(enable)
 
   def onRunButton(self):
+    if not self.logic.confirmDeviceOk():
+      return
     inputNode, outputNode = self.getNodes()
     self.logic.parcellate(self.model, inputNode, outputNode)
     slicer.util.setSliceViewerLayers(label=outputNode.GetID())
@@ -111,6 +113,14 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
   def __init__(self):
     self.torchLogic = PyTorchUtilsLogic()
     self.torchioLogic = TorchIOUtilsLogic()
+
+  def confirmDeviceOk(self):
+    if self.torchLogic.getDevice() == 'cpu':
+      text = 'Processing might take long as inference will run on the CPU. Do you want to continue?'
+      run = slicer.util.confirmYesNoDisplay(text)
+    else:
+      run = True
+    return run
 
   def parcellate(
       self,
@@ -129,12 +139,11 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         # outputTorchIOImage = self.inferVolume(
         #   model,
         #   inputTorchIOImage,
-        #   useMixedPrecision=useMixedPrecision,
         # )
         outputTorchIOImage = self.inferPatches(
           model,
           preprocessedImage,
-          patchSize=128,
+          patchSize=64,  # 128
           patchOverlap=4,
           batchSize=1,
         )
@@ -163,13 +172,14 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     transformed = transform(subject)[key]
     return transformed
 
-  def inferVolume(self, model, torchIOImage):
-    # TODO
+  def inferVolume(self, model, image):
     tio = self.torchioLogic.torchio
-    toFloat = tio.Lambda(lambda x: x.float())
-    threshold = tio.Lambda(lambda x: x > x.mean())
-    transform = tio.Compose([toFloat, threshold])
-    output = transform(torchIOImage)
+    inputTensor = image.data.unsqueeze(0)  # add batch dimension
+    logging.info('Sending tensor to device...')
+    inputTensor = inputTensor.to(self.torchLogic.getDevice())
+    logits = model(inputTensor)
+    labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True).cpu()
+    output = tio.LabelMap(tensor=labels[0], affine=image.affine)
     return output
 
   def inferPatches(
