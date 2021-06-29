@@ -50,7 +50,6 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
     logging.info(f'TorchIO {torchio.__version__} installed correctly')
     return torchio
 
-  @staticmethod
   def getTorchIOImageFromVolumeNode(self, volumeNode):
     image = su.PullVolumeFromSlicer(volumeNode)
     tensor, affine = self.torchio.io.sitk_to_nib(image)

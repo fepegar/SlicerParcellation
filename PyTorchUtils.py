@@ -58,7 +58,6 @@ class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
   @staticmethod
   def getPyTorchHubModel(self, repoOwner, repoName, modelName, *args, **kwargs):
     # This will fail if dependencies in the corresponding hub.py are not installed
-    torch = self.importTorch()
     repo = f'{repoOwner}/{repoName}'
-    model = torch.hub.load(repo, modelName, *args, pretrained=True, **kwargs)
+    model = self.torch.hub.load(repo, modelName, *args, pretrained=True, **kwargs)
     return model
