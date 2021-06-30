@@ -5,6 +5,7 @@ import numpy as np
 
 import qt
 import ctk
+import vtk
 import slicer
 from slicer.ScriptedLoadableModule import (
   ScriptedLoadableModule,
@@ -21,6 +22,11 @@ REPO_OWNER = 'fepegar'
 REPO_NAME = 'highresnet'
 MODEL_NAME = 'highres3dnet'
 LI_LANDMARKS = (0.0, 8.1, 15.5, 18.7, 21.5, 26.1, 30.0, 33.8, 38.2, 40.7, 44.0, 58.4, 100.0)
+SMOOTHING = 0.2
+BLACK = 0, 0, 0
+LI_PAPER = 'https://link.springer.com/chapter/10.1007/978-3-319-59050-9_28'
+CARDOSO_PAPER = 'https://pubmed.ncbi.nlm.nih.gov/25879909/'
+PEREZGARCIA_REPO = 'https://github.com/fepegar/highresnet'
 
 
 class BrainParcellation(ScriptedLoadableModule):
@@ -29,12 +35,27 @@ class BrainParcellation(ScriptedLoadableModule):
     self.parent.title = 'Brain Parcellation'
     self.parent.categories = ['Segmentation']
     self.parent.dependencies = []
-    self.parent.contributors = ['Fernando Perez-Garcia (University College London)']
-    self.parent.helpText = 'This module does this and that.'
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    self.parent.contributors = [
+      "Fernando Perez-Garcia (University College London and King's College London)",
+    ]
+    self.parent.helpText = (
+      'Brain parcellation using deep learning.'
+      f'<p>Paper: <a href="{LI_PAPER}">Li et al. 2017, On the Compactness,'
+      ' Efficiency, and Representation of 3D Convolutional Networks: Brain'
+      ' Parcellation as a Pretext Task</a>.</p>'
+      f'<p>GIF parcellation: <a href="{CARDOSO_PAPER}">Cardoso et al. 2015,'
+      ' Geodesic Information Flows: Spatially-Variant Graphs and Their'
+      ' Application to Segmentation and Fusion</a>.</p>'
+      f'<p>PyTorch implementation: <a href="{PEREZGARCIA_REPO}">Perez-Garcia 2019,'
+      ' highresnet GitHub repository</a>.</p>'
+    )
     self.parent.acknowledgementText = (
       'This work was was funded by the Engineering and Physical Sciences'
-      ' Research Council (​EPSRC)'
+      ' Research Council (​EPSRC) and supported by the UCL Centre for Doctoral'
+      ' Training in Intelligent, Integrated Imaging in Healthcare, the UCL'
+      ' Wellcome / EPSRC Centre for Interventional and Surgical Sciences (WEISS),'
+      ' and the School of Biomedical Engineering & Imaging Sciences (BMEIS)'
+      " of King's College London."
     )
 
 
@@ -51,7 +72,8 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     if self._model is None:
       pu = PyTorchUtilsLogic()
       self._model = pu.getPyTorchHubModel(REPO_OWNER, REPO_NAME, MODEL_NAME)
-      self._model.to(pu.getDevice())
+      self._model.eval()  # set to evaluation mode
+      self._model.to(pu.getDevice())  # move to GPU if available
     return self._model
 
   def makeGUI(self):
@@ -103,6 +125,7 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
 
     self.mixedPrecisionCheckBox = qt.QCheckBox()
     self.settingsLayout.addRow('Use mixed precision: ', self.mixedPrecisionCheckBox)
+    self.mixedPrecisionCheckBox.setChecked(True)
 
     self.inferenceModeGroupBox = qt.QGroupBox()
     self.settingsLayout.addRow('Inference mode: ', self.inferenceModeGroupBox)
@@ -160,18 +183,19 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
   def onRunButton(self):
     if not self.logic.confirmDeviceOk():
       return
-    inputNode, outputNode = self.getDataNodes()
+    inputVolumeNode, outputSegmentationNode = self.getDataNodes()
     try:
       self.logic.parcellate(
         self.model,
-        inputNode,
-        outputNode,
+        inputVolumeNode,
+        outputSegmentationNode,
         patchBased=self.patchesRadioButton.isChecked(),
         useMixedPrecision=self.mixedPrecisionCheckBox.isChecked(),
         patchSize=self.patchSizeSpinBox.value,
         patchOverlap=self.patchOverlapSpinBox.value,
         batchSize=self.batchSizeSpinBox.value,
       )
+      self.logic.hideBlack(outputSegmentationNode)
     except Exception as e:
       slicer.util.errorDisplay(f'Error running parcellation:\n{e}')
 
@@ -183,7 +207,10 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
 
   def confirmDeviceOk(self):
     if self.torchLogic.getDevice() == 'cpu':
-      text = 'Processing might take long as inference will run on the CPU. Do you want to continue?'
+      text = (
+        'Inference might take some minutes as it will run on the CPU.'
+        ' Do you want to continue anyway?'
+      )
       run = slicer.util.confirmYesNoDisplay(text)
     else:
       run = True
@@ -227,13 +254,10 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     outputInInputSpace = tio.Resample(inputImage)(outputTorchIOImage)
 
     labelMapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
-    labelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(outputInInputSpace,labelMapNode)
+    labelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(outputInInputSpace, labelMapNode)
     labelMapNode.CreateDefaultDisplayNodes()
     self.setGIFColors(labelMapNode)
-
-    segmentationsLogic = slicer.modules.segmentations.logic()
-    segmentationsLogic.ImportLabelmapToSegmentationNode(labelMapNode, outputSegmentationNode)
-    outputSegmentationNode.CreateClosedSurfaceRepresentation()
+    self.labelMapToSegmentation(labelMapNode, outputSegmentationNode)
     slicer.mrmlScene.RemoveNode(labelMapNode)
     return outputSegmentationNode
 
@@ -319,3 +343,30 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     colorNode = self.getColorNode()
     displayNode = labelMapVolumeNode.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID(colorNode.GetID())
+
+  @staticmethod
+  def labelMapToSegmentation(labelMapNode, segmentationNode):
+    segmentationsLogic = slicer.modules.segmentations.logic()
+    segmentationsLogic.ImportLabelmapToSegmentationNode(labelMapNode, segmentationNode)
+
+    rule = slicer.vtkBinaryLabelmapToClosedSurfaceConversionRule
+    smoothingParameter = rule.GetSmoothingFactorParameterName()
+    segmentation = segmentationNode.GetSegmentation()
+    segmentation.SetConversionParameter(smoothingParameter, str(SMOOTHING))
+    segmentationNode.CreateClosedSurfaceRepresentation()
+
+  @staticmethod
+  def getSegmentIDs(segmentationNode):
+    segmentation = segmentationNode.getSegmentation()
+    array = vtk.vtkStringArray()
+    segmentation.GetSegmentIDs(array)
+    ids = [array.GetValue(i) for i in range(array.GetSize())]
+    return ids
+
+  def hideBlack(self, segmentationNode):
+    segmentation = segmentationNode.getSegmentation()
+    displayNode = segmentationNode.GetDisplayNode()
+    for segmentID in self.getSegmentIDs(segmentationNode):
+      segment = segmentation.GetSegment(segmentID)
+      if segment.GetColor() == BLACK:
+        displayNode.SetSegmentVisibility(segmentID, False)
