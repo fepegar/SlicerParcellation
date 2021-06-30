@@ -234,9 +234,10 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     logging.info('Creating TorchIO image...')
     inputImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
 
-    logging.info('Preprocessing image...')
+    logging.info('Preprocessing input...')
     preprocessedImage = self.preprocess(inputImage)
 
+    logging.info('Running inference...')
     with torch.cuda.amp.autocast(enabled=useMixedPrecision):
       if patchBased:
         outputTorchIOImage = self.inferPatches(
@@ -251,12 +252,17 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
           model,
           preprocessedImage,
         )
+
+    logging.info('Postprocessing output...')
     outputInInputSpace = tio.Resample(inputImage)(outputTorchIOImage)
 
+    logging.info('Creating label map...')
     labelMapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
     labelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(outputInInputSpace, labelMapNode)
     labelMapNode.CreateDefaultDisplayNodes()
     self.setGIFColors(labelMapNode)
+
+    logging.info('Creating segmentation and meshes...')
     self.labelMapToSegmentation(labelMapNode, outputSegmentationNode)
     slicer.mrmlScene.RemoveNode(labelMapNode)
     return outputSegmentationNode
@@ -312,7 +318,6 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         windowTitle='Running inference...',
       )
     for i, patchesBatch in enumerate(patchLoader):
-      if i != numBatches // 2: continue
       if showProgress:
         progressDialog.setValue(i)
         slicer.app.processEvents()  # necessary?
@@ -357,16 +362,17 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
 
   @staticmethod
   def getSegmentIDs(segmentationNode):
-    segmentation = segmentationNode.getSegmentation()
+    segmentation = segmentationNode.GetSegmentation()
     array = vtk.vtkStringArray()
     segmentation.GetSegmentIDs(array)
-    ids = [array.GetValue(i) for i in range(array.GetSize())]
+    ids = [array.GetValue(i) for i in range(array.GetNumberOfValues())]
     return ids
 
   def hideBlack(self, segmentationNode):
-    segmentation = segmentationNode.getSegmentation()
+    segmentation = segmentationNode.GetSegmentation()
     displayNode = segmentationNode.GetDisplayNode()
     for segmentID in self.getSegmentIDs(segmentationNode):
       segment = segmentation.GetSegment(segmentID)
       if segment.GetColor() == BLACK:
+        logging.info(f'Hiding {segmentID}...')
         displayNode.SetSegmentVisibility(segmentID, False)
