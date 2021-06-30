@@ -1,4 +1,5 @@
 import logging
+from os import stat
 from pathlib import Path
 
 import numpy as np
@@ -93,6 +94,10 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.dataCollapsibleButton)
     self.dataLayout = qt.QFormLayout(self.dataCollapsibleButton)
 
+    self.downloadOasisPushButton = qt.QPushButton('Download sample data')
+    self.downloadOasisPushButton.clicked.connect(self.onDownloadOasis)
+    self.dataLayout.addWidget(self.downloadOasisPushButton)
+
     self.inputNodeSelector = slicer.qMRMLNodeComboBox()
     self.inputNodeSelector.nodeTypes = ['vtkMRMLScalarVolumeNode']
     self.inputNodeSelector.addEnabled = False
@@ -144,7 +149,7 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     self.patchesRadioButton.toggled.connect(self.onPatchesButton)
 
     self.patchesSettingsGroupBox = qt.QGroupBox('Patches settings')
-    self.settingsLayout.addWidget(self.patchesSettingsGroupBox)
+    self.settingsLayout.addRow(self.patchesSettingsGroupBox)
     self.patchesSettingsLayout = qt.QFormLayout(self.patchesSettingsGroupBox)
 
     self.patchSizeSpinBox = qt.QSpinBox()
@@ -180,6 +185,10 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
   def onPatchesButton(self):
     self.patchesSettingsGroupBox.setVisible(self.patchesRadioButton.isChecked())
 
+  def onDownloadOasis(self):
+    imagePath = self.logic.downloadOasis()
+    slicer.util.loadVolume(str(imagePath))
+
   def onRunButton(self):
     if not self.logic.confirmDeviceOk():
       return
@@ -195,10 +204,9 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
         patchOverlap=self.patchOverlapSpinBox.value,
         batchSize=self.batchSizeSpinBox.value,
       )
-      self.logic.hideBlack(outputSegmentationNode)
+      self.logic.hideBlackSegments(outputSegmentationNode)
     except Exception as e:
       slicer.util.errorDisplay(f'Error running parcellation:\n{e}')
-
 
 class BrainParcellationLogic(ScriptedLoadableModuleLogic):
   def __init__(self):
@@ -318,6 +326,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         windowTitle='Running inference...',
       )
     for i, patchesBatch in enumerate(patchLoader):
+      if i != numBatches // 2: continue  # for debugging
       if showProgress:
         progressDialog.setValue(i)
         slicer.app.processEvents()  # necessary?
@@ -368,7 +377,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     ids = [array.GetValue(i) for i in range(array.GetNumberOfValues())]
     return ids
 
-  def hideBlack(self, segmentationNode):
+  def hideBlackSegments(self, segmentationNode):
     segmentation = segmentationNode.GetSegmentation()
     displayNode = segmentationNode.GetDisplayNode()
     for segmentID in self.getSegmentIDs(segmentationNode):
@@ -376,3 +385,27 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
       if segment.GetColor() == BLACK:
         logging.info(f'Hiding {segmentID}...')
         displayNode.SetSegmentVisibility(segmentID, False)
+
+  @staticmethod
+  def downloadOasis():
+    """
+    http://blog.ppkt.eu/2014/06/python-urllib-and-tarfile/
+    """
+    import os
+    import urllib
+    import shutil
+    import tarfile
+    import tempfile
+    fileName = 'OAS1_0145_MR2_mpr_n4_anon_sbj_111.nii.gz'
+    dst = Path(tempfile.gettempdir()) / fileName
+    if not dst.is_file():
+      logging.info('Downloading OASIS image...')
+      url = 'https://github.com/NifTK/NiftyNetModelZoo/raw/5-reorganising-with-lfs/highres3dnet_brain_parcellation/data.tar.gz'
+      fileTmp = urllib.request.urlretrieve(url, filename=None)[0]
+      tar = tarfile.open(fileTmp)
+      tempDir = Path(slicer.util.tempDirectory())
+      tar.extractall(tempDir)
+      src = tempDir / fileName
+      os.rename(src, dst)
+      shutil.rmtree(tempDir)
+    return dst
