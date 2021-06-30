@@ -107,3 +107,5 @@ ENV/
 
 # Custom
 *DS_Store
+.flake8
+

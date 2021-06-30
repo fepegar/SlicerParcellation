@@ -13,7 +13,7 @@ class PyTorchUtils(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "PyTorch Utils"
-    self.parent.categories = ["Utilities"]
+    self.parent.categories = []
     self.parent.dependencies = []
     self.parent.contributors = ["Fernando Perez-Garcia (University College London)"]
     self.parent.helpText = 'This module does this and that.'
