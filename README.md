@@ -22,7 +22,7 @@ Then, in Slicer, go to `Edit -> Application Settings -> Modules` and add the clo
 
 ![Brain Parcellation module](./screenshots/parcellation.png)
 
-Based on [Li et al., 2017, On the Compactness, Efficiency, and Representation of 3D Convolutional Networks: Brain Parcellation as a Pretext Task](https://link.springer.com/chapter/10.1007/978-3-319-59050-9_28).
+Based on [Li et al., 2017, *On the Compactness, Efficiency, and Representation of 3D Convolutional Networks: Brain Parcellation as a Pretext Task*](https://link.springer.com/chapter/10.1007/978-3-319-59050-9_28).
 
 It splits the brain in 160 different structures, similar to the geodesic information flows (GIF) algorithm by [Cardoso et al. 2015](https://pubmed.ncbi.nlm.nih.gov/25879909/).
 
@@ -34,7 +34,7 @@ The [`highresnet`](https://github.com/fepegar/highresnet) Python package can be 
 
 ![Brain Resection Cavity Segmentation module](./screenshots/cavity.gif)
 
-Based on [Pérez-García et al., 2021, A self-supervised learning strategy for postoperative brain cavity segmentation simulating resections](https://link.springer.com/article/10.1007/s11548-021-02420-2).
+Based on [Pérez-García et al., 2021, *A self-supervised learning strategy for postoperative brain cavity segmentation simulating resections*](https://link.springer.com/article/10.1007/s11548-021-02420-2).
 
 The segmentation works best if the input images are in the [MNI space](https://www.bic.mni.mcgill.ca/ServicesAtlases/ICBM152NLin2009). The model was trained on T1-weighted MRIs with simulated resections, but it seems to work well with T1 images with gadolinium as well.
 
