@@ -6,6 +6,8 @@ from slicer.ScriptedLoadableModule import (
   ScriptedLoadableModuleLogic,
 )
 
+from lib.GeneralUtils import showWaitCursor, peakPythonConsole
+
 
 class PyTorchUtils(ScriptedLoadableModule):
   def __init__(self, parent):
@@ -41,7 +43,8 @@ class PyTorchUtilsLogic(ScriptedLoadableModuleLogic):
     try:
       import torch
     except ModuleNotFoundError:
-      torch = self.installTorch()
+      with showWaitCursor(), peakPythonConsole():
+        torch = self.installTorch()
     logging.info(f'PyTorch {torch.__version__} imported correctly')
     logging.info(f'CUDA available: {torch.cuda.is_available()}')
     return torch

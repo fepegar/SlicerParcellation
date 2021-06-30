@@ -9,6 +9,8 @@ from slicer.ScriptedLoadableModule import (
 )
 import sitkUtils as su
 
+from lib.GeneralUtils import showWaitCursor, peakPythonConsole
+
 
 class TorchIOUtils(ScriptedLoadableModule):
   def __init__(self, parent):
@@ -42,7 +44,8 @@ class TorchIOUtilsLogic(ScriptedLoadableModuleLogic):
     try:
       import torchio
     except ModuleNotFoundError:
-      torchio = self.installTorchIO()
+      with showWaitCursor(), peakPythonConsole():
+        torchio = self.installTorchIO()
     logging.info(f'TorchIO {torchio.__version__} imported correctly')
     return torchio
 

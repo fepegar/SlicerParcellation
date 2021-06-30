@@ -17,6 +17,7 @@ from slicer.ScriptedLoadableModule import (
 
 from PyTorchUtils import PyTorchUtilsLogic
 from TorchIOUtils import TorchIOUtilsLogic
+from lib.GeneralUtils import showWaitCursor
 
 
 REPO_OWNER = 'fepegar'
@@ -193,18 +194,20 @@ class BrainParcellationWidget(ScriptedLoadableModuleWidget):
     if not self.logic.confirmDeviceOk():
       return
     inputVolumeNode, outputSegmentationNode = self.getDataNodes()
+
     try:
-      self.logic.parcellate(
-        self.model,
-        inputVolumeNode,
-        outputSegmentationNode,
-        patchBased=self.patchesRadioButton.isChecked(),
-        useMixedPrecision=self.mixedPrecisionCheckBox.isChecked(),
-        patchSize=self.patchSizeSpinBox.value,
-        patchOverlap=self.patchOverlapSpinBox.value,
-        batchSize=self.batchSizeSpinBox.value,
-      )
-      self.logic.hideBlackSegments(outputSegmentationNode)
+      with showWaitCursor():
+        self.logic.parcellate(
+          self.model,
+          inputVolumeNode,
+          outputSegmentationNode,
+          patchBased=self.patchesRadioButton.isChecked(),
+          useMixedPrecision=self.mixedPrecisionCheckBox.isChecked(),
+          patchSize=self.patchSizeSpinBox.value,
+          patchOverlap=self.patchOverlapSpinBox.value,
+          batchSize=self.batchSizeSpinBox.value,
+        )
+        self.logic.hideBlackSegments(outputSegmentationNode)
     except Exception as e:
       slicer.util.errorDisplay(f'Error running parcellation:\n{e}')
 
@@ -282,8 +285,8 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     transforms = (
       tio.ToCanonical(),  # to RAS
       tio.Resample(image_interpolation=interpolation),  # to 1 mm iso
-      tio.HistogramStandardization(landmarks=landmarks),
-      tio.ZNormalization(),
+      # tio.HistogramStandardization(landmarks=landmarks),
+      tio.ZNormalization(masking_method=tio.ZNormalization.mean),
     )
     transform = tio.Compose(transforms)
     subject = tio.Subject({key: torchIOImage})  # for the histogram standardization
@@ -317,7 +320,6 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     gridSampler = tio.inference.GridSampler(subject, patchSize, patchOverlap)
     patchLoader = torch.utils.data.DataLoader(gridSampler, batch_size=batchSize)
     aggregator = tio.inference.GridAggregator(gridSampler)
-    # TODO: if there is patch overlap, are the labels being (incorrectly) averaged?
     if showProgress:
       numBatches = len(patchLoader)
       progressDialog = slicer.util.createProgressDialog(
@@ -326,7 +328,6 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
         windowTitle='Running inference...',
       )
     for i, patchesBatch in enumerate(patchLoader):
-      if i != numBatches // 2: continue  # for debugging
       if showProgress:
         progressDialog.setValue(i)
         slicer.app.processEvents()  # necessary?
