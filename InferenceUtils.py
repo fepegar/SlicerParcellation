@@ -178,7 +178,7 @@ class InferenceUtilsWidget(ScriptedLoadableModuleWidget):
 
     try:
       with showWaitCursor():
-        self.logic.parcellate(
+        self.logic.segment(
           self.model,
           inputVolumeNode,
           outputSegmentationNode,
@@ -187,8 +187,8 @@ class InferenceUtilsWidget(ScriptedLoadableModuleWidget):
           patchSize=self.patchSizeSpinBox.value,
           patchOverlap=self.patchOverlapSpinBox.value,
           batchSize=self.batchSizeSpinBox.value,
+          colorNode=self.colorNode,
         )
-        self.logic.hideBlackSegments(outputSegmentationNode)
     except Exception as e:
       slicer.util.errorDisplay(f'Error running segmentation:\n{e}')
 
@@ -197,6 +197,61 @@ class InferenceUtilsLogic(ScriptedLoadableModuleLogic):
   def __init__(self):
     self.torchLogic = PyTorchUtilsLogic()
     self.torchioLogic = TorchIOUtilsLogic()
+
+  def segment(
+      self,
+      model,
+      inputVolumeNode,
+      outputSegmentationNode,
+      patchBased=True,
+      useMixedPrecision=True,
+      patchSize=None,
+      patchOverlap=None,
+      batchSize=None,
+      colorNode=None,
+      ):
+    tio = self.torchioLogic.torchio
+    torch = self.torchLogic.torch
+    torch.set_grad_enabled(False)
+
+    logging.info('Creating TorchIO image...')
+    inputImage = self.torchioLogic.getTorchIOImageFromVolumeNode(inputVolumeNode)
+
+    logging.info('Preprocessing input...')
+    preprocessedImage = self.preprocess(inputImage)
+
+    logging.info('Running inference...')
+    with torch.cuda.amp.autocast(enabled=useMixedPrecision):
+      if patchBased:
+        outputTorchIOImage = self.inferPatches(
+          model,
+          preprocessedImage,
+          patchSize=patchSize,
+          patchOverlap=patchOverlap,
+          batchSize=batchSize,
+        )
+      else:
+        outputTorchIOImage = self.inferVolume(
+          model,
+          preprocessedImage,
+        )
+
+    logging.info('Postprocessing output...')
+    outputInInputSpace = self.postprocess(outputTorchIOImage, inputImage)
+
+    logging.info('Creating label map...')
+    labelMapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
+    labelMapNode = self.torchioLogic.getVolumeNodeFromTorchIOImage(outputInInputSpace, labelMapNode)
+    labelMapNode.CreateDefaultDisplayNodes()
+
+    if colorNode is not None:
+      displayNode = labelMapNode.GetDisplayNode()
+      displayNode.SetAndObserveColorNodeID(colorNode.GetID())
+
+    logging.info('Creating segmentation and meshes...')
+    self.labelMapToSegmentation(labelMapNode, outputSegmentationNode)
+    slicer.mrmlScene.RemoveNode(labelMapNode)
+    return outputSegmentationNode
 
   def confirmDeviceOk(self):
     if self.torchLogic.getDevice() == 'cpu':
