@@ -330,6 +330,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     for i, patchesBatch in enumerate(patchLoader):
       if showProgress:
         progressDialog.setValue(i)
+        progressDialog.setLabelText(f'Processing patch {i+1}/{numBatches}...')
         slicer.app.processEvents()  # necessary?
       inputTensor = patchesBatch[imageName][tio.DATA].to(device)
       locations = patchesBatch[tio.LOCATION]
