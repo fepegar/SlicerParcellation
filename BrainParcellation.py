@@ -299,7 +299,7 @@ class BrainParcellationLogic(ScriptedLoadableModuleLogic):
     logging.info('Sending tensor to device...')
     inputTensor = inputTensor.to(self.torchLogic.getDevice())
     logits = model(inputTensor)
-    labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True).cpu()
+    labels = logits.argmax(dim=tio.CHANNELS_DIMENSION, keepdim=True).byte().cpu()
     output = tio.LabelMap(tensor=labels[0], affine=image.affine)
     return output
 
