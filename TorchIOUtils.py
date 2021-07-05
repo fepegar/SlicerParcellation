@@ -24,7 +24,7 @@ class TorchIOUtils(ScriptedLoadableModule):
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = (
       'This work was was funded by the Engineering and Physical Sciences'
-      ' Research Council (​EPSRC)'
+      ' Research Council (EPSRC)'
     )
 
 

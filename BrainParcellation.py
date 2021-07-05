@@ -36,7 +36,7 @@ class BrainParcellation(ScriptedLoadableModule):
     )
     self.parent.acknowledgementText = (
       'This work was was funded by the Engineering and Physical Sciences'
-      ' Research Council (​EPSRC) and supported by the UCL Centre for Doctoral'
+      ' Research Council (EPSRC) and supported by the UCL Centre for Doctoral'
       ' Training in Intelligent, Integrated Imaging in Healthcare, the UCL'
       ' Wellcome / EPSRC Centre for Interventional and Surgical Sciences (WEISS),'
       ' and the School of Biomedical Engineering & Imaging Sciences (BMEIS)'
