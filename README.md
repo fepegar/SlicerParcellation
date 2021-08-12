@@ -8,13 +8,20 @@ This is a project for the [35th NA-MIC Project Week](https://github.com/NA-MIC/P
 
 ## Installation
 
+### Option 1
 Clone this repository:
 
 ```shell
 git clone https://github.com/fepegar/SlicerParcellation.git
 ```
 
-Then, in Slicer, go to `Edit -> Application Settings -> Modules` and add the cloned folder to the `Additional module paths`. When prompted, restart Slicer.
+### Option 2
+
+[Download the zipped directory](https://github.com/fepegar/SlicerParcellation/archive/refs/heads/master.zip) and unzip it.
+
+### Add directory in Slicer
+
+In Slicer, go to `Edit -> Application Settings -> Modules` and add the cloned/downloaded folder to the `Additional module paths`. When prompted, restart Slicer.
 
 ## Modules
 
