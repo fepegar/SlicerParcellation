@@ -19,7 +19,7 @@ class BrainParcellation(ScriptedLoadableModule):
     super().__init__(parent)
     self.parent.title = 'Brain Parcellation'
     self.parent.categories = ['Segmentation']
-    self.parent.dependencies = ['TorchIOTransforms']
+    self.parent.dependencies = ['']
     self.parent.contributors = [
       "Fernando Perez-Garcia (University College London and King's College London)",
     ]
