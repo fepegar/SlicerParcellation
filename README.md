@@ -8,14 +8,15 @@ This is a project for the [35th NA-MIC Project Week](https://github.com/NA-MIC/P
 
 ## Installation
 
-### Option 1
-Clone this repository:
+### Download module
+
+#### Option 1: clone repository
 
 ```shell
 git clone https://github.com/fepegar/SlicerParcellation.git
 ```
 
-### Option 2
+#### Option 2: download zipped repository
 
 [Download the zipped directory](https://github.com/fepegar/SlicerParcellation/archive/refs/heads/master.zip) and unzip it.
 
